@@ -155,6 +155,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     if (!ta) return;
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
+    const scrollPos = ta.scrollTop;
     const text = ta.value;
     const selected = text.substring(start, end) || placeholder;
     const replacement = before + selected + after;
@@ -165,6 +166,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
 
     requestAnimationFrame(() => {
       ta.focus();
+      ta.scrollTop = scrollPos;
       const cursorPos = start + before.length;
       ta.setSelectionRange(cursorPos, cursorPos + selected.length);
     });

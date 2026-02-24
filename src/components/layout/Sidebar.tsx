@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { cn } from '../ui/SkeuoButton';
-import { FileText, Plus, Trash2, Menu, Search, Inbox, ArrowUpDown } from 'lucide-react';
+import { FileText, Plus, Trash2, Menu, Search, Inbox, ArrowUpDown, EllipsisVertical, KeyRound, LogOut } from 'lucide-react';
 import { useNotesStore } from '../../store/notesStore';
 import { SkeuoButton } from '../ui/SkeuoButton';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { ChangePasswordDialog } from '../ui/ChangePasswordDialog';
 
 function SidebarSkeleton() {
   return (
@@ -29,6 +30,19 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const logout = useAuthStore(state => state.logout);
   const [searchQuery, setSearchQuery] = useState('');
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
 
   type SortOption = 'updatedAt' | 'createdAt' | 'title';
   const sortLabels: Record<SortOption, string> = { updatedAt: 'Modified', createdAt: 'Created', title: 'Title' };
@@ -153,10 +167,37 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           )}
         </div>
 
-        <div className="p-4 border-t border-[var(--border-color)]">
-          <SkeuoButton onClick={logout} className="w-full py-2 text-sm text-red-500 hover:text-red-600 font-medium">
+        <div className="p-4 border-t border-[var(--border-color)] flex items-center gap-2">
+          <SkeuoButton onClick={logout} className="flex-1 py-2 text-sm text-red-500 hover:text-red-600 font-medium flex items-center justify-center gap-2">
+            <LogOut size={14} />
             Sign Out
           </SkeuoButton>
+
+          <div className="relative" ref={menuRef}>
+            <SkeuoButton
+              variant="icon"
+              className="w-9 h-9"
+              onClick={() => setShowMenu(prev => !prev)}
+              title="More options"
+            >
+              <EllipsisVertical size={16} />
+            </SkeuoButton>
+
+            {showMenu && (
+              <div className="absolute bottom-full right-0 mb-2 w-48 skeuo-panel rounded-lg overflow-hidden shadow-lg z-50">
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowChangePassword(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                >
+                  <KeyRound size={14} className="opacity-70" />
+                  Change Password
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -169,6 +210,11 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           setNoteToDelete(null);
         }}
         onCancel={() => setNoteToDelete(null)}
+      />
+
+      <ChangePasswordDialog
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
       />
     </>
   );

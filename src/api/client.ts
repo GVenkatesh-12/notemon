@@ -1,5 +1,6 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../store/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://secure-notes-api-u4ve.onrender.com';
 
@@ -30,13 +31,10 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && !hasShown401Toast) {
       hasShown401Toast = true;
-
       toast.error('Session expired. Please sign in again.', { duration: 5000 });
+      useAuthStore.getState().logout();
 
-      setTimeout(() => {
-        localStorage.removeItem('auth_token');
-        window.location.href = '/login';
-      }, 1500);
+      setTimeout(() => { hasShown401Toast = false; }, 5000);
     }
     return Promise.reject(error);
   }
