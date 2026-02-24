@@ -4,7 +4,8 @@ import {
   Loader2, CloudCog, FileText, Plus, Edit2, Eye, Copy, Check,
   Minus, Plus as PlusIcon, Bold, Italic, Strikethrough, Heading,
   List, ListOrdered, Code, CodeSquare, Link, SeparatorHorizontal,
-  Maximize2, Minimize2, Quote, Image, Table, ListChecks, Highlighter
+  Maximize2, Minimize2, Quote, Image, Table, ListChecks, Highlighter,
+  Undo2, Redo2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -13,6 +14,33 @@ import rehypeRaw from 'rehype-raw';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { SkeuoButton } from '../ui/SkeuoButton';
+import { useUndoRedo } from '../../hooks/useUndoRedo';
+
+const InlineCode = ({ children, ...props }: any) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(String(children));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <span className="relative inline-flex items-center group/inline">
+      <code className="bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+        {children}
+      </code>
+      <button
+        onClick={handleCopy}
+        className="inline-flex items-center ml-0.5 opacity-0 group-hover/inline:opacity-70 hover:opacity-100! transition-opacity p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10"
+        title="Copy code"
+      >
+        {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+      </button>
+    </span>
+  );
+};
 
 const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
   const match = /language-(\w+)/.exec(className || '');
@@ -53,11 +81,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
     );
   }
 
-  return (
-    <code className="bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-      {children}
-    </code>
-  );
+  return <InlineCode {...props}>{children}</InlineCode>;
 };
 
 interface EditorProps {
@@ -82,6 +106,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     return stored ? Number(stored) : 16;
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const history = useUndoRedo();
 
   const adjustFontSize = useCallback((delta: number) => {
     setFontSize(prev => {
@@ -91,6 +116,11 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     });
   }, []);
   const activeTab = openTabs.find(t => t._id === activeTabId);
+
+  useEffect(() => {
+    if (activeTab) history.init(activeTab._id, activeTab.content || '');
+  }, [activeTab?._id]);
+
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpdatesRef = useRef<{ id: string; title?: string; content?: string } | null>(null);
 
@@ -147,7 +177,8 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     const newContent = e.target.value;
     updateLocalTabContent(activeTabId_, newContent);
     triggerAutoSave(activeTabId_, { content: newContent });
-  }, [activeTabId_, updateLocalTabContent, triggerAutoSave]);
+    history.record(activeTabId_, newContent);
+  }, [activeTabId_, updateLocalTabContent, triggerAutoSave, history]);
 
   const insertMarkdown = useCallback((before: string, after: string, placeholder: string) => {
     if (!activeTabId_) return;
@@ -157,12 +188,16 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     const end = ta.selectionEnd;
     const scrollPos = ta.scrollTop;
     const text = ta.value;
+
+    history.snapshot(activeTabId_, text);
+
     const selected = text.substring(start, end) || placeholder;
     const replacement = before + selected + after;
     const newText = text.substring(0, start) + replacement + text.substring(end);
 
     updateLocalTabContent(activeTabId_, newText);
     triggerAutoSave(activeTabId_, { content: newText });
+    history.snapshot(activeTabId_, newText);
 
     requestAnimationFrame(() => {
       ta.focus();
@@ -170,9 +205,41 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
       const cursorPos = start + before.length;
       ta.setSelectionRange(cursorPos, cursorPos + selected.length);
     });
-  }, [activeTabId_, updateLocalTabContent, triggerAutoSave]);
+  }, [activeTabId_, updateLocalTabContent, triggerAutoSave, history]);
+
+  const performUndo = useCallback(() => {
+    if (!activeTabId_) return;
+    const content = history.undo(activeTabId_);
+    if (content !== null) {
+      updateLocalTabContent(activeTabId_, content);
+      triggerAutoSave(activeTabId_, { content });
+    }
+  }, [activeTabId_, history, updateLocalTabContent, triggerAutoSave]);
+
+  const performRedo = useCallback(() => {
+    if (!activeTabId_) return;
+    const content = history.redo(activeTabId_);
+    if (content !== null) {
+      updateLocalTabContent(activeTabId_, content);
+      triggerAutoSave(activeTabId_, { content });
+    }
+  }, [activeTabId_, history, updateLocalTabContent, triggerAutoSave]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      performUndo();
+    } else if ((mod && e.key === 'z' && e.shiftKey) || (mod && e.key === 'y')) {
+      e.preventDefault();
+      performRedo();
+    }
+  }, [performUndo, performRedo]);
 
   const toolbarActions = useMemo(() => [
+    { icon: Undo2,         title: 'Undo (Ctrl+Z)',   action: performUndo, disabled: !history.canUndo(activeTabId_) },
+    { icon: Redo2,         title: 'Redo (Ctrl+Shift+Z)', action: performRedo, disabled: !history.canRedo(activeTabId_) },
+    { divider: true } as const,
     { icon: Bold,          title: 'Bold',            action: () => insertMarkdown('**', '**', 'bold text') },
     { icon: Italic,        title: 'Italic',          action: () => insertMarkdown('*', '*', 'italic text') },
     { icon: Strikethrough, title: 'Strikethrough',   action: () => insertMarkdown('~~', '~~', 'strikethrough') },
@@ -192,7 +259,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     { icon: Image,         title: 'Image',           action: () => insertMarkdown('![', '](url)', 'alt text') },
     { icon: Table,         title: 'Table',           action: () => insertMarkdown('\n| Column 1 | Column 2 | Column 3 |\n| -------- | -------- | -------- |\n| ', ' | cell | cell |\n', 'cell') },
     { icon: SeparatorHorizontal, title: 'Horizontal Rule', action: () => insertMarkdown('\n---\n', '', '') },
-  ] as const, [insertMarkdown]);
+  ] as const, [insertMarkdown, performUndo, performRedo, history, activeTabId_]);
 
   const { words, chars } = useMemo(() => {
     const content = activeTab?.content || '';
@@ -331,7 +398,8 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
               <button
                 key={i}
                 onClick={item.action}
-                className="p-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                disabled={'disabled' in item ? item.disabled : false}
+                className="p-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition-all disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 title={item.title}
               >
                 <item.icon size={15} />
@@ -408,6 +476,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
               ref={textareaRef}
               value={activeTab.content || ''}
               onChange={handleContentChange}
+              onKeyDown={handleKeyDown}
               className="w-full h-full resize-none bg-transparent outline-none text-[var(--text-color)] leading-relaxed font-excali p-4 md:p-8"
               placeholder="Start typing your note here... (Markdown supported)"
               spellCheck="false"
