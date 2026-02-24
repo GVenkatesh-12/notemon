@@ -1,0 +1,43 @@
+import axios from 'axios';
+import toast from 'react-hot-toast';
+
+const API_URL = 'https://secure-notes-api-u4ve.onrender.com';
+
+export const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+let hasShown401Toast = false;
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && !hasShown401Toast) {
+      hasShown401Toast = true;
+
+      toast.error('Session expired. Please sign in again.', { duration: 5000 });
+
+      setTimeout(() => {
+        localStorage.removeItem('auth_token');
+        window.location.href = '/login';
+      }, 1500);
+    }
+    return Promise.reject(error);
+  }
+);
