@@ -1,7 +1,7 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const API_URL = 'https://secure-notes-api-u4ve.onrender.com';
+const API_URL = import.meta.env.VITE_API_URL || 'https://secure-notes-api-u4ve.onrender.com';
 
 export const apiClient = axios.create({
   baseURL: API_URL,
