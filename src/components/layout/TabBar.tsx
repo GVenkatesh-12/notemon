@@ -62,7 +62,7 @@ export function TabBar() {
             onDragEnd={handleDragEnd}
             onClick={() => setActiveTab(tab._id)}
             className={cn(
-              "group flex items-center gap-2 px-4 py-2 min-w-[120px] max-w-[200px] cursor-pointer select-none rounded-t-lg text-sm transition-all",
+              "group flex items-center gap-1.5 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2 min-w-[100px] md:min-w-[120px] max-w-[160px] md:max-w-[200px] cursor-pointer select-none rounded-t-lg text-sm transition-all",
               "skeuo-tab",
               isActive && "active font-medium text-blue-600 dark:text-blue-400",
               !isActive && "opacity-70 hover:opacity-100 mt-1",

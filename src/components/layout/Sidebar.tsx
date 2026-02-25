@@ -157,7 +157,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                     e.stopPropagation();
                     setNoteToDelete(note._id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
+                  className="opacity-50 md:opacity-0 md:group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
                   title="Delete Note"
                 >
                   <Trash2 size={14} />

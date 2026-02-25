@@ -292,24 +292,24 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     <div className="flex-1 flex flex-col h-full bg-[var(--bg-color)] overflow-hidden relative">
       {/* Editor Header */}
       {!zenMode && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-3 border-b border-[var(--border-color)] skeuo-panel gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-6 py-2 sm:py-3 border-b border-[var(--border-color)] skeuo-panel gap-2 sm:gap-3">
           <input
             value={activeTab.title}
             onChange={handleTitleChange}
-            className="text-2xl font-bold bg-transparent outline-none border-none placeholder:opacity-50 text-[var(--text-color)] w-full max-w-xl font-excali"
+            className="text-xl sm:text-2xl font-bold bg-transparent outline-none border-none placeholder:opacity-50 text-[var(--text-color)] w-full max-w-xl font-excali"
             placeholder="Note Title..."
           />
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setIsPreview(p => !p)}
-              className="p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity"
+              className="p-1.5 sm:p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity"
               title={isPreview ? 'Switch to Edit' : 'Switch to Preview'}
             >
               {isPreview ? <Edit2 size={16} /> : <Eye size={16} />}
             </button>
 
-            <div className="flex items-center bg-[var(--border-color)] rounded-lg skeuo-inset">
+            <div className="hidden sm:flex items-center bg-[var(--border-color)] rounded-lg skeuo-inset">
               <button
                 onClick={() => adjustFontSize(-2)}
                 disabled={fontSize <= 12}
@@ -332,27 +332,27 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
             {onToggleZen && (
               <button
                 onClick={onToggleZen}
-                className="p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity"
+                className="hidden sm:block p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity"
                 title="Zen Mode"
               >
                 <Maximize2 size={16} />
               </button>
             )}
 
-            <div className="flex items-center gap-2 text-xs font-medium opacity-70 bg-black/5 dark:bg-white/5 px-3 py-1.5 rounded-full min-w-[80px] justify-center">
+            <div className="flex items-center gap-1.5 text-xs font-medium opacity-70 bg-black/5 dark:bg-white/5 px-2 sm:px-3 py-1.5 rounded-full justify-center">
               {saveStatus === 'unsaved' && (
                 <span className="opacity-50">Unsaved</span>
               )}
               {saveStatus === 'saving' && (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  <span>Saving...</span>
+                  <span className="hidden sm:inline">Saving...</span>
                 </>
               )}
               {saveStatus === 'saved' && (
                 <>
                   <CloudCog size={14} className="text-green-500" />
-                  <span>Saved</span>
+                  <span className="hidden sm:inline">Saved</span>
                 </>
               )}
             </div>
@@ -390,7 +390,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
 
       {/* Formatting Toolbar */}
       {!isPreview && (
-        <div className={`flex items-center gap-0.5 px-4 py-1.5 border-b border-[var(--border-color)] bg-[var(--panel-color)]/50 ${zenMode ? 'justify-center' : ''}`}>
+        <div className={`flex items-center flex-nowrap gap-0.5 px-2 sm:px-4 py-1.5 border-b border-[var(--border-color)] bg-[var(--panel-color)]/50 overflow-x-auto no-scrollbar ${zenMode ? 'justify-center' : ''}`}>
           {toolbarActions.map((item, i) =>
             'divider' in item ? (
               <div key={i} className="w-px h-4 bg-[var(--border-color)] mx-1.5" />
@@ -410,7 +410,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
       )}
 
       {/* Editor Body */}
-      <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${zenMode ? 'p-4 md:p-8' : 'p-6'}`}>
+      <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${zenMode ? 'p-4 md:p-8' : 'p-2 sm:p-6'}`}>
         <div className="skeuo-inset flex-1 min-h-0 rounded-xl overflow-hidden" style={{ fontSize }}>
           {isPreview ? (
             <div className="max-w-none w-full h-full p-4 md:p-8 overflow-y-auto text-[var(--text-color)]">

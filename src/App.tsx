@@ -1,17 +1,29 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { useAuthStore } from './store/authStore';
+import { useAuthStore, isTokenExpired } from './store/authStore';
 
-// Lazy load pages for better performance (optional, but good practice)
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 
-// Protected Route Wrapper
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  
+  const logout = useAuthStore((state) => state.logout);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const token = localStorage.getItem('auth_token');
+        if (!token || isTokenExpired(token)) {
+          logout();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [logout]);
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

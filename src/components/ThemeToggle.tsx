@@ -24,8 +24,9 @@ export function ThemeToggle() {
   };
 
   return (
-    <SkeuoButton variant="icon" onClick={toggleTheme} className="w-10 h-10" aria-label="Toggle Theme">
-      {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+    <SkeuoButton variant="icon" onClick={toggleTheme} className="w-8 h-8 md:w-10 md:h-10" aria-label="Toggle Theme">
+      {theme === 'light' ? <Moon size={16} className="md:hidden" /> : <Sun size={16} className="md:hidden" />}
+      {theme === 'light' ? <Moon size={20} className="hidden md:block" /> : <Sun size={20} className="hidden md:block" />}
     </SkeuoButton>
   );
 }

@@ -37,19 +37,19 @@ export default function Dashboard() {
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--panel-color)] p-2">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--panel-color)] p-1 sm:p-2">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
             <button 
-              className="md:hidden p-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+              className="md:hidden p-1.5 sm:p-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5 shrink-0"
               onClick={() => setIsSidebarOpen(true)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-6 sm:h-6"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
-            <div className="w-full overflow-hidden">
+            <div className="min-w-0 flex-1 overflow-hidden">
               <TabBar />
             </div>
           </div>
-          <div className="px-2">
+          <div className="px-1 sm:px-2 shrink-0">
             <ThemeToggle />
           </div>
         </div>
