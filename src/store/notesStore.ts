@@ -17,8 +17,11 @@ function encodeContent(content: string): string {
     const bytes = new TextEncoder().encode(content);
     let binary = '';
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    return B64_PREFIX + btoa(binary);
-  } catch {
+    const encoded = B64_PREFIX + btoa(binary);
+    console.log('[encode]', content.length, 'chars →', encoded.length, 'encoded chars');
+    return encoded;
+  } catch (e) {
+    console.error('[encode FAILED, sending raw]', e);
     return content;
   }
 }
@@ -136,6 +139,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         const encodedUpdates = updates.content !== undefined
           ? { ...updates, content: encodeContent(updates.content) }
           : updates;
+        console.log('[PATCH] content starts with:', encodedUpdates.content?.slice(0, 30));
         const response = await apiClient.patch<Note>(`/notes/${resolvedId}`, encodedUpdates);
         data = decodeNote(response.data);
         
