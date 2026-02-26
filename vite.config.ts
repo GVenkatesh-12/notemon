@@ -13,7 +13,20 @@ export default defineConfig({
         target: 'https://secure-notes-api-u4ve.onrender.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
-        secure: true,
+        secure: false,
+        timeout: 60000,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const len = proxyReq.getHeader('content-length') || 0;
+            console.log(`[Proxy →] ${req.method} ${req.url} (${len} bytes)`);
+          });
+          proxy.on('proxyRes', (proxyRes, req) => {
+            console.log(`[Proxy ←] ${req.method} ${req.url} → ${proxyRes.statusCode}`);
+          });
+          proxy.on('error', (err, req) => {
+            console.error(`[Proxy ERROR] ${req.method} ${req.url}:`, err.message);
+          });
+        },
       },
     },
   },

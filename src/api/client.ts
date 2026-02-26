@@ -13,6 +13,7 @@ export const apiClient = axios.create({
   },
   maxContentLength: Infinity,
   maxBodyLength: Infinity,
+  timeout: 30000,
 });
 
 apiClient.interceptors.request.use(
