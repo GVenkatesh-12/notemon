@@ -10,6 +10,36 @@ export interface Note {
   updatedAt: string;
 }
 
+const B64_PREFIX = 'b64:';
+
+function encodeContent(content: string): string {
+  try {
+    const bytes = new TextEncoder().encode(content);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return B64_PREFIX + btoa(binary);
+  } catch {
+    return content;
+  }
+}
+
+function decodeContent(stored: string): string {
+  if (!stored) return '';
+  if (!stored.startsWith(B64_PREFIX)) return stored;
+  try {
+    const binary = atob(stored.slice(B64_PREFIX.length));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return stored;
+  }
+}
+
+function decodeNote(note: Note): Note {
+  return { ...note, content: decodeContent(note.content) };
+}
+
 interface NotesState {
   notes: Note[];
   openTabs: Note[];
@@ -45,7 +75,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const { data } = await apiClient.get<Note[]>('/notes');
-      set({ notes: data, isLoading: false });
+      set({ notes: data.map(decodeNote), isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }
@@ -87,9 +117,9 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
         const response = await apiClient.post<Note>('/notes', {
           title: titleToSave || 'Untitled Note',
-          content: contentToSave
+          content: encodeContent(contentToSave)
         });
-        data = response.data;
+        data = decodeNote(response.data);
         tempToRealId.set(id, data._id);
         
         const { title: _t, content: _c, ...tempMeta } = data;
@@ -103,8 +133,11 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           };
         });
       } else {
-        const response = await apiClient.patch<Note>(`/notes/${resolvedId}`, updates);
-        data = response.data;
+        const encodedUpdates = updates.content !== undefined
+          ? { ...updates, content: encodeContent(updates.content) }
+          : updates;
+        const response = await apiClient.patch<Note>(`/notes/${resolvedId}`, encodedUpdates);
+        data = decodeNote(response.data);
         
         const { title: _t, content: _c, ...metadata } = data;
         set((state) => ({
