@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import { useNotesStore } from '../../store/notesStore';
 import {
   Loader2, CloudCog, FileText, Plus, Edit2, Eye, Copy, Check,
@@ -124,6 +125,8 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpdatesRef = useRef<{ id: string; title?: string; content?: string } | null>(null);
   const isSavingRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 3;
 
   const flushSave = useCallback(async () => {
     if (saveTimeoutRef.current) {
@@ -142,11 +145,27 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
         ...(pending.content !== undefined && { content: pending.content }),
       });
       setSaveStatus('saved');
-    } catch {
+      retryCountRef.current = 0;
+    } catch (err: any) {
+      const status = err?.response?.status || 'network';
+      const msg = err?.response?.data?.error || err?.message || 'Unknown error';
+      console.error('[Save failed]', status, msg, { pending, err });
+      toast.error(`Save failed (${status}): ${msg}`, { id: 'save-error', duration: 6000 });
       setSaveStatus('unsaved');
+
+      if (retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current += 1;
+        const existing = pendingUpdatesRef.current;
+        pendingUpdatesRef.current = existing
+          ? { ...pending, ...existing }
+          : pending;
+        saveTimeoutRef.current = setTimeout(flushSave, 3000);
+      } else {
+        retryCountRef.current = 0;
+      }
     } finally {
       isSavingRef.current = false;
-      if (pendingUpdatesRef.current) {
+      if (pendingUpdatesRef.current && !saveTimeoutRef.current) {
         flushSave();
       }
     }
@@ -158,6 +177,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
       pendingUpdatesRef.current = { ...prev, ...updates };
     } else {
       pendingUpdatesRef.current = { id, ...updates };
+      retryCountRef.current = 0;
     }
     setSaveStatus('unsaved');
 

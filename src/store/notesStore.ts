@@ -113,6 +113,13 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         }));
       }
     } catch (err: any) {
+      console.error('[updateNote]', {
+        id, resolvedId: id.startsWith('temp-') ? (tempToRealId.get(id) ?? id) : id,
+        status: err?.response?.status,
+        responseData: err?.response?.data,
+        message: err?.message,
+        updates: { ...updates, content: updates.content ? `(${updates.content.length} chars)` : undefined },
+      });
       set({ error: err.message });
       throw err;
     }
