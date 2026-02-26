@@ -123,15 +123,18 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpdatesRef = useRef<{ id: string; title?: string; content?: string } | null>(null);
+  const isSavingRef = useRef(false);
 
   const flushSave = useCallback(async () => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
+    if (isSavingRef.current) return;
     const pending = pendingUpdatesRef.current;
     if (!pending) return;
     pendingUpdatesRef.current = null;
+    isSavingRef.current = true;
     setSaveStatus('saving');
     try {
       await updateNote(pending.id, {
@@ -141,6 +144,11 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
       setSaveStatus('saved');
     } catch {
       setSaveStatus('unsaved');
+    } finally {
+      isSavingRef.current = false;
+      if (pendingUpdatesRef.current) {
+        flushSave();
+      }
     }
   }, [updateNote]);
 

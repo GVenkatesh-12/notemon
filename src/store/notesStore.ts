@@ -32,6 +32,8 @@ interface NotesState {
   reorderTabs: (fromIndex: number, toIndex: number) => void;
 }
 
+const tempToRealId = new Map<string, string>();
+
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
   openTabs: [],
@@ -70,18 +72,16 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   updateNote: async (id: string, updates: Partial<Note>) => {
     try {
       let data: Note;
+      const resolvedId = id.startsWith('temp-') ? (tempToRealId.get(id) ?? id) : id;
       
-      // If it's a temp note, we need to create it on the server first
-      if (id.startsWith('temp-')) {
+      if (resolvedId.startsWith('temp-')) {
         const state = get();
-        const currentTempNote = state.notes.find(n => n._id === id);
+        const currentTempNote = state.notes.find(n => n._id === resolvedId);
         
-        // Don't save if it's completely empty
         const titleToSave = updates.title ?? currentTempNote?.title ?? '';
         const contentToSave = updates.content ?? currentTempNote?.content ?? '';
         
         if (!titleToSave.trim() && !contentToSave.trim()) {
-          // Both are empty, skip API call
           return;
         }
 
@@ -90,6 +90,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           content: contentToSave
         });
         data = response.data;
+        tempToRealId.set(id, data._id);
         
         const { title: _t, content: _c, ...tempMeta } = data;
         set((state) => {
@@ -102,18 +103,18 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           };
         });
       } else {
-        const response = await apiClient.patch<Note>(`/notes/${id}`, updates);
+        const response = await apiClient.patch<Note>(`/notes/${resolvedId}`, updates);
         data = response.data;
         
         const { title: _t, content: _c, ...metadata } = data;
         set((state) => ({
-          notes: state.notes.map((n) => (n._id === id ? data : n)),
-          openTabs: state.openTabs.map((t) => (t._id === id ? { ...t, ...metadata } : t)),
+          notes: state.notes.map((n) => (n._id === resolvedId ? data : n)),
+          openTabs: state.openTabs.map((t) => (t._id === resolvedId ? { ...t, ...metadata } : t)),
         }));
       }
     } catch (err: any) {
       set({ error: err.message });
-      throw err; // Re-throw to be caught by Editor component
+      throw err;
     }
   },
 
