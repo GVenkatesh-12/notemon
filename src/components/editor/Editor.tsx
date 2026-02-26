@@ -208,6 +208,32 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     history.record(activeTabId_, newContent);
   }, [activeTabId_, updateLocalTabContent, triggerAutoSave, history]);
 
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!activeTabId_) return;
+    const pasted = e.clipboardData.getData('text/plain');
+    if (pasted.length < 500) return;
+
+    e.preventDefault();
+    const ta = textareaRef.current;
+    if (!ta) return;
+
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = ta.value.substring(0, start);
+    const after = ta.value.substring(end);
+    const newContent = before + pasted + after;
+
+    updateLocalTabContent(activeTabId_, newContent);
+    triggerAutoSave(activeTabId_, { content: newContent });
+    history.record(activeTabId_, newContent);
+
+    requestAnimationFrame(() => {
+      ta.focus();
+      const cursor = start + pasted.length;
+      ta.setSelectionRange(cursor, cursor);
+    });
+  }, [activeTabId_, updateLocalTabContent, triggerAutoSave, history]);
+
   const insertMarkdown = useCallback((before: string, after: string, placeholder: string) => {
     if (!activeTabId_) return;
     const ta = textareaRef.current;
@@ -255,14 +281,17 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key === 'z' && !e.shiftKey) {
+    if (mod && e.key === 's') {
+      e.preventDefault();
+      flushSave();
+    } else if (mod && e.key === 'z' && !e.shiftKey) {
       e.preventDefault();
       performUndo();
     } else if ((mod && e.key === 'z' && e.shiftKey) || (mod && e.key === 'y')) {
       e.preventDefault();
       performRedo();
     }
-  }, [performUndo, performRedo]);
+  }, [flushSave, performUndo, performRedo]);
 
   const toolbarActions = useMemo(() => [
     { icon: Undo2,         title: 'Undo (Ctrl+Z)',   action: performUndo, disabled: !history.canUndo(activeTabId_) },
@@ -504,6 +533,7 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
               ref={textareaRef}
               value={activeTab.content || ''}
               onChange={handleContentChange}
+              onPaste={handlePaste}
               onKeyDown={handleKeyDown}
               className="w-full h-full resize-none bg-transparent outline-none text-[var(--text-color)] leading-relaxed font-excali p-4 md:p-8"
               placeholder="Start typing your note here... (Markdown supported)"
