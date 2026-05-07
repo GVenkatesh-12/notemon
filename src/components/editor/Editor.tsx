@@ -6,7 +6,7 @@ import {
   Minus, Plus as PlusIcon, Bold, Italic, Strikethrough, Heading,
   List, ListOrdered, Code, CodeSquare, Link, SeparatorHorizontal,
   Maximize2, Minimize2, Quote, Image, Table, ListChecks, Highlighter,
-  Undo2, Redo2
+  Undo2, Redo2, Sparkles, X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -16,6 +16,15 @@ import SyntaxHighlighter from 'react-syntax-highlighter';
 import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { SkeuoButton } from '../ui/SkeuoButton';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
+import {
+  AI_ACTIONS,
+  estimateAiUsage,
+  getOpenRouterConfig,
+  OPENROUTER_CONFIG_CHANGED,
+  runOpenRouterAiAction,
+  type AiAction,
+  type OpenRouterConfig,
+} from '../../api/openRouter';
 
 const InlineCode = ({ children, ...props }: any) => {
   const [copied, setCopied] = useState(false);
@@ -88,9 +97,35 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
 interface EditorProps {
   zenMode?: boolean;
   onToggleZen?: () => void;
+  modeRequest?: {
+    noteId: string;
+    mode: 'edit' | 'preview';
+    requestId: number;
+  } | null;
 }
 
-export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
+interface AiTarget {
+  text: string;
+  sourceContent: string;
+  start: number;
+  end: number;
+  scope: 'selection' | 'note';
+}
+
+interface PendingNoteUpdate {
+  id: string;
+  title?: string;
+  content?: string;
+}
+
+function formatEstimatedCost(cost?: number) {
+  if (cost === undefined) return 'cost n/a';
+  if (cost < 0.0001) return '<$0.0001 max';
+  if (cost < 0.01) return `$${cost.toFixed(4)} max`;
+  return `$${cost.toFixed(2)} max`;
+}
+
+export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProps) {
   const { 
     openTabs, 
     activeTabId, 
@@ -102,11 +137,20 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [isPreview, setIsPreview] = useState(false);
+  const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
+  const [isAiRunning, setIsAiRunning] = useState(false);
+  const [aiTargetPreview, setAiTargetPreview] = useState<AiTarget | null>(null);
+  const [openRouterConfig, setOpenRouterConfig] = useState<OpenRouterConfig>(() => getOpenRouterConfig());
   const [fontSize, setFontSize] = useState(() => {
     const stored = localStorage.getItem('editor-font-size');
     return stored ? Number(stored) : 16;
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const aiMenuRef = useRef<HTMLDivElement>(null);
+  const selectedAiTargetRef = useRef<AiTarget | null>(null);
+  const aiAbortControllerRef = useRef<AbortController | null>(null);
+  const activeContentRef = useRef('');
+  const activeTabIdRef = useRef<string | null>(null);
   const history = useUndoRedo();
 
   const adjustFontSize = useCallback((delta: number) => {
@@ -119,11 +163,37 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
   const activeTab = openTabs.find(t => t._id === activeTabId);
 
   useEffect(() => {
+    activeContentRef.current = activeTab?.content || '';
+    activeTabIdRef.current = activeTabId;
+  }, [activeTab?.content, activeTabId]);
+
+  useEffect(() => {
     if (activeTab) history.init(activeTab._id, activeTab.content || '');
   }, [activeTab?._id]);
 
+  useEffect(() => {
+    const handleConfigChanged = () => setOpenRouterConfig(getOpenRouterConfig());
+    window.addEventListener(OPENROUTER_CONFIG_CHANGED, handleConfigChanged);
+    return () => window.removeEventListener(OPENROUTER_CONFIG_CHANGED, handleConfigChanged);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (aiMenuRef.current && !aiMenuRef.current.contains(e.target as Node)) {
+        setIsAiMenuOpen(false);
+      }
+    };
+    if (isAiMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isAiMenuOpen]);
+
+  useEffect(() => {
+    if (!modeRequest || modeRequest.noteId !== activeTabId) return;
+    setIsPreview(modeRequest.mode === 'preview');
+  }, [activeTabId, modeRequest]);
+
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingUpdatesRef = useRef<{ id: string; title?: string; content?: string } | null>(null);
+  const pendingUpdatesRef = useRef<PendingNoteUpdate | null>(null);
   const isSavingRef = useRef(false);
   const retryCountRef = useRef(0);
   const MAX_RETRIES = 3;
@@ -136,29 +206,34 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     if (isSavingRef.current) return;
     const pending = pendingUpdatesRef.current;
     if (!pending) return;
+    const pendingUpdate: PendingNoteUpdate = pending;
     pendingUpdatesRef.current = null;
     isSavingRef.current = true;
     setSaveStatus('saving');
     try {
-      await updateNote(pending.id, {
-        ...(pending.title !== undefined && { title: pending.title }),
-        ...(pending.content !== undefined && { content: pending.content }),
+      await updateNote(pendingUpdate.id, {
+        ...(pendingUpdate.title !== undefined && { title: pendingUpdate.title }),
+        ...(pendingUpdate.content !== undefined && { content: pendingUpdate.content }),
       });
       setSaveStatus('saved');
       retryCountRef.current = 0;
     } catch (err: any) {
       const status = err?.response?.status || 'network';
       const msg = err?.response?.data?.error || err?.message || 'Unknown error';
-      console.error('[Save failed]', status, msg, { pending, err });
+      console.error('[Save failed]', status, msg, { pending: pendingUpdate, err });
       toast.error(`Save failed (${status}): ${msg}`, { id: 'save-error', duration: 6000 });
       setSaveStatus('unsaved');
 
       if (retryCountRef.current < MAX_RETRIES) {
         retryCountRef.current += 1;
-        const existing = pendingUpdatesRef.current;
+        const existing = pendingUpdatesRef.current as PendingNoteUpdate | null;
         pendingUpdatesRef.current = existing
-          ? { ...pending, ...existing }
-          : pending;
+          ? {
+              id: existing.id,
+              title: existing.title ?? pendingUpdate.title,
+              content: existing.content ?? pendingUpdate.content,
+            }
+          : pendingUpdate;
         saveTimeoutRef.current = setTimeout(flushSave, 3000);
       } else {
         retryCountRef.current = 0;
@@ -293,6 +368,148 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
     }
   }, [flushSave, performUndo, performRedo]);
 
+  const getAiTarget = useCallback((): AiTarget | null => {
+    if (!activeTabId_) return null;
+    const sourceContent = activeContentRef.current;
+    if (!sourceContent.trim()) return null;
+
+    const ta = textareaRef.current;
+    if (ta && ta.selectionStart !== ta.selectionEnd) {
+      return {
+        text: sourceContent.slice(ta.selectionStart, ta.selectionEnd),
+        sourceContent,
+        start: ta.selectionStart,
+        end: ta.selectionEnd,
+        scope: 'selection',
+      };
+    }
+
+    const browserSelection = window.getSelection()?.toString();
+    if (browserSelection?.trim()) {
+      const start = sourceContent.indexOf(browserSelection);
+      if (start >= 0 && sourceContent.indexOf(browserSelection, start + browserSelection.length) === -1) {
+        return {
+          text: browserSelection,
+          sourceContent,
+          start,
+          end: start + browserSelection.length,
+          scope: 'selection',
+        };
+      }
+    }
+
+    return {
+      text: sourceContent,
+      sourceContent,
+      start: 0,
+      end: sourceContent.length,
+      scope: 'note',
+    };
+  }, [activeTabId_]);
+
+  const captureAiTarget = useCallback(() => {
+    const target = getAiTarget();
+    selectedAiTargetRef.current = target;
+    setAiTargetPreview(target);
+    setOpenRouterConfig(getOpenRouterConfig());
+    return target;
+  }, [getAiTarget]);
+
+  const handleAiButtonMouseDown = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    captureAiTarget();
+  }, [captureAiTarget]);
+
+  const toggleAiMenu = useCallback(() => {
+    if (!selectedAiTargetRef.current) captureAiTarget();
+    setOpenRouterConfig(getOpenRouterConfig());
+    setIsAiMenuOpen((open) => !open);
+  }, [captureAiTarget]);
+
+  const stopAiRequest = useCallback(() => {
+    aiAbortControllerRef.current?.abort();
+  }, []);
+
+  const applyAiAction = useCallback(async (action: AiAction, capturedTarget?: AiTarget | null) => {
+    if (!activeTabId_) return;
+
+    const target = capturedTarget || selectedAiTargetRef.current || getAiTarget();
+    if (!target) {
+      toast.error('Add note content before using AI.');
+      return;
+    }
+    selectedAiTargetRef.current = target;
+    setAiTargetPreview(target);
+
+    const config = getOpenRouterConfig();
+    setOpenRouterConfig(config);
+
+    if (!config.apiKey.trim() || !config.modelId.trim()) {
+      toast.error('Configure OpenRouter API key and model first.');
+      return;
+    }
+
+    const targetTabId = activeTabId_;
+    const estimate = estimateAiUsage(target.text, action, config.pricing);
+    const loadingToast = toast.loading(`${action.label} with ${config.modelName || config.modelId}...`);
+    const abortController = new AbortController();
+    aiAbortControllerRef.current = abortController;
+
+    setIsAiMenuOpen(false);
+    setIsAiRunning(true);
+
+    try {
+      const result = await runOpenRouterAiAction({
+        config,
+        action,
+        text: target.text,
+        scopeLabel: target.scope === 'selection' ? 'the selected text only' : 'the entire note',
+        estimate,
+        signal: abortController.signal,
+      });
+
+      if (activeTabIdRef.current !== targetTabId) {
+        throw new Error('The active note changed while the AI request was running. No changes were applied.');
+      }
+      if (activeContentRef.current !== target.sourceContent) {
+        throw new Error('The note changed while the AI request was running. No changes were applied.');
+      }
+
+      const newContent =
+        target.scope === 'selection'
+          ? target.sourceContent.slice(0, target.start) + result.text + target.sourceContent.slice(target.end)
+          : result.text;
+
+      history.snapshot(targetTabId, target.sourceContent);
+      updateLocalTabContent(targetTabId, newContent);
+      triggerAutoSave(targetTabId, { content: newContent });
+      history.snapshot(targetTabId, newContent);
+
+      requestAnimationFrame(() => {
+        if (textareaRef.current && target.scope === 'selection') {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(target.start, target.start + result.text.length);
+        }
+      });
+
+      const totalTokens = result.usage?.total_tokens;
+      toast.success(totalTokens ? `AI updated note (${totalTokens} tokens used).` : 'AI updated note.', {
+        id: loadingToast,
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        toast.error('AI request stopped.', { id: loadingToast });
+      } else {
+        toast.error(err?.message || 'AI request failed.', { id: loadingToast, duration: 6000 });
+      }
+    } finally {
+      if (aiAbortControllerRef.current === abortController) {
+        aiAbortControllerRef.current = null;
+      }
+      setIsAiRunning(false);
+    }
+  }, [activeTabId_, getAiTarget, history, triggerAutoSave, updateLocalTabContent]);
+
   const toolbarActions = useMemo(() => [
     { icon: Undo2,         title: 'Undo (Ctrl+Z)',   action: performUndo, disabled: !history.canUndo(activeTabId_) },
     { icon: Redo2,         title: 'Redo (Ctrl+Shift+Z)', action: performRedo, disabled: !history.canRedo(activeTabId_) },
@@ -358,6 +575,76 @@ export function Editor({ zenMode = false, onToggleZen }: EditorProps) {
           />
           
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="relative" ref={aiMenuRef}>
+              <button
+                onMouseDown={handleAiButtonMouseDown}
+                onClick={toggleAiMenu}
+                disabled={isAiRunning}
+                className="p-1.5 sm:p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                title="AI tools"
+              >
+                {isAiRunning ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              </button>
+
+              {isAiRunning && (
+                <button
+                  onClick={stopAiRequest}
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                  title="Stop AI request"
+                >
+                  <X size={12} />
+                </button>
+              )}
+
+              {isAiMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[min(28rem,calc(100vh-9rem))] skeuo-panel rounded-lg overflow-hidden shadow-lg z-50 flex flex-col">
+                  <div className="px-4 py-3 border-b border-[var(--border-color)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold">AI Tools</span>
+                      <span className="text-[11px] opacity-60 truncate max-w-40">
+                        {openRouterConfig.modelName || openRouterConfig.modelId || 'No model selected'}
+                      </span>
+                    </div>
+                    <p className="text-xs opacity-60 mt-1">
+                      {aiTargetPreview?.scope === 'selection' ? 'Selection' : 'Whole note'}
+                      {aiTargetPreview ? ` · ~${Math.ceil(aiTargetPreview.text.length / 4)} text tokens` : ' · no note text'}
+                    </p>
+                  </div>
+
+                  {!openRouterConfig.apiKey || !openRouterConfig.modelId ? (
+                    <div className="px-4 py-3 text-sm opacity-70">
+                      Configure your OpenRouter API key and model from the sidebar menu before running AI actions.
+                    </div>
+                  ) : null}
+
+                  <div className="py-1 overflow-y-auto min-h-0">
+                    {AI_ACTIONS.map((action) => {
+                      const estimate = aiTargetPreview
+                        ? estimateAiUsage(aiTargetPreview.text, action, openRouterConfig.pricing)
+                        : null;
+                      return (
+                        <button
+                          key={action.id}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => applyAiAction(action, aiTargetPreview)}
+                          disabled={isAiRunning || !aiTargetPreview || !openRouterConfig.apiKey || !openRouterConfig.modelId}
+                          className="w-full text-left px-4 py-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <span className="block text-sm font-medium">{action.label}</span>
+                          <span className="block text-xs opacity-60 mt-0.5">{action.description}</span>
+                          {estimate && (
+                            <span className="block text-[11px] opacity-50 mt-1">
+                              Est. {estimate.inputTokens} input / up to {estimate.maxOutputTokens} output tokens · {formatEstimatedCost(estimate.estimatedCost)}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setIsPreview(p => !p)}
               className="p-1.5 sm:p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity"

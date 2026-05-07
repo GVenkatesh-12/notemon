@@ -79,6 +79,7 @@ export function ChangePasswordDialog({ isOpen, onClose }: ChangePasswordDialogPr
             value={oldPassword}
             onChange={(e) => setOldPassword(e.target.value)}
             placeholder="••••••••"
+            showPasswordToggle
             required
             autoFocus
           />
@@ -89,6 +90,7 @@ export function ChangePasswordDialog({ isOpen, onClose }: ChangePasswordDialogPr
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="••••••••"
+            showPasswordToggle
             required
           />
 

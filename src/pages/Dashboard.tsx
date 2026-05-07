@@ -8,6 +8,11 @@ import { ThemeToggle } from '../components/ThemeToggle';
 export default function Dashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [zenMode, setZenMode] = useState(false);
+  const [editorModeRequest, setEditorModeRequest] = useState<{
+    noteId: string;
+    mode: 'edit' | 'preview';
+    requestId: number;
+  } | null>(null);
   const fetchNotes = useNotesStore(state => state.fetchNotes);
   
   useEffect(() => {
@@ -15,6 +20,14 @@ export default function Dashboard() {
   }, [fetchNotes]);
 
   const toggleZen = useCallback(() => setZenMode(z => !z), []);
+
+  const requestEditorMode = useCallback((noteId: string, mode: 'edit' | 'preview') => {
+    setEditorModeRequest({
+      noteId,
+      mode,
+      requestId: Date.now(),
+    });
+  }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -27,14 +40,18 @@ export default function Dashboard() {
   if (zenMode) {
     return (
       <div className="fixed inset-0 flex overflow-hidden bg-[var(--bg-color)]">
-        <Editor zenMode onToggleZen={toggleZen} />
+        <Editor zenMode onToggleZen={toggleZen} modeRequest={editorModeRequest} />
       </div>
     );
   }
 
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-[var(--bg-color)]">
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      <Sidebar
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
+        onRequestEditorMode={requestEditorMode}
+      />
       
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--panel-color)] p-1 sm:p-2">
@@ -54,7 +71,7 @@ export default function Dashboard() {
           </div>
         </div>
         
-        <Editor onToggleZen={toggleZen} />
+        <Editor onToggleZen={toggleZen} modeRequest={editorModeRequest} />
       </div>
     </div>
   );

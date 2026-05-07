@@ -74,6 +74,7 @@ export default function Register() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Create a strong password"
+            showPasswordToggle
             required
             minLength={6}
           />

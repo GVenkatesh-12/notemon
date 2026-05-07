@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { cn } from '../ui/SkeuoButton';
-import { FileText, Plus, Trash2, Menu, Search, Inbox, ArrowUpDown, EllipsisVertical, KeyRound, LogOut } from 'lucide-react';
+import { FileText, Plus, Trash2, Menu, Search, Inbox, ArrowUpDown, EllipsisVertical, KeyRound, LogOut, Bot } from 'lucide-react';
 import { useNotesStore } from '../../store/notesStore';
 import { SkeuoButton } from '../ui/SkeuoButton';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { ChangePasswordDialog } from '../ui/ChangePasswordDialog';
+import { ConfigureOpenRouterDialog } from '../ui/ConfigureOpenRouterDialog';
 
 function SidebarSkeleton() {
   return (
@@ -23,15 +24,17 @@ function SidebarSkeleton() {
 interface SidebarProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
+  onRequestEditorMode?: (noteId: string, mode: 'edit' | 'preview') => void;
 }
 
-export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
+export function Sidebar({ isOpen, setIsOpen, onRequestEditorMode }: SidebarProps) {
   const { notes, createNote, openTab, deleteNote, activeTabId, isLoading } = useNotesStore();
   const logout = useAuthStore(state => state.logout);
   const [searchQuery, setSearchQuery] = useState('');
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showOpenRouterConfig, setShowOpenRouterConfig] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,6 +74,12 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       return new Date(b[sortBy]).getTime() - new Date(a[sortBy]).getTime();
     });
   }, [notes, searchQuery, sortBy]);
+
+  const openNote = (note: (typeof notes)[number], mode: 'edit' | 'preview') => {
+    openTab(note);
+    onRequestEditorMode?.(note._id, mode);
+    if (window.innerWidth < 768) setIsOpen(false);
+  };
 
   return (
     <>
@@ -137,10 +146,8 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             filteredNotes.map((note) => (
               <div
                 key={note._id}
-                onClick={() => {
-                  openTab(note);
-                  if (window.innerWidth < 768) setIsOpen(false);
-                }}
+                onClick={() => openNote(note, 'edit')}
+                onDoubleClick={() => openNote(note, 'preview')}
                 className={cn(
                   "flex items-center justify-between group px-3 py-2 rounded-lg cursor-pointer transition-colors",
                   activeTabId === note._id 
@@ -157,6 +164,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                     e.stopPropagation();
                     setNoteToDelete(note._id);
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   className="opacity-50 md:opacity-0 md:group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
                   title="Delete Note"
                 >
@@ -195,6 +203,16 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   <KeyRound size={14} className="opacity-70" />
                   Change Password
                 </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowOpenRouterConfig(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                >
+                  <Bot size={14} className="opacity-70" />
+                  Configure OpenRouter API
+                </button>
               </div>
             )}
           </div>
@@ -215,6 +233,11 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       <ChangePasswordDialog
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
+      />
+
+      <ConfigureOpenRouterDialog
+        isOpen={showOpenRouterConfig}
+        onClose={() => setShowOpenRouterConfig(false)}
       />
     </>
   );
