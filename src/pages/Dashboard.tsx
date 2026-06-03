@@ -8,11 +8,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 export default function Dashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [zenMode, setZenMode] = useState(false);
-  const [editorModeRequest, setEditorModeRequest] = useState<{
-    noteId: string;
-    mode: 'edit' | 'preview';
-    requestId: number;
-  } | null>(null);
+  const [editorPreviewMode, setEditorPreviewMode] = useState(false);
   const fetchNotes = useNotesStore(state => state.fetchNotes);
   
   useEffect(() => {
@@ -21,26 +17,46 @@ export default function Dashboard() {
 
   const toggleZen = useCallback(() => setZenMode(z => !z), []);
 
-  const requestEditorMode = useCallback((noteId: string, mode: 'edit' | 'preview') => {
-    setEditorModeRequest({
-      noteId,
-      mode,
-      requestId: Date.now(),
-    });
+  const requestEditorMode = useCallback((mode: 'edit' | 'preview') => {
+    setEditorPreviewMode(mode === 'preview');
   }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && zenMode) setZenMode(false);
+      const target = e.target as HTMLElement | null;
+      const isEditableTarget =
+        target?.isContentEditable ||
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT';
+
+      if (e.key === 'Escape' && zenMode) {
+        setZenMode(false);
+      } else if (
+        e.key.toLowerCase() === 'f' &&
+        editorPreviewMode &&
+        !isEditableTarget &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        setZenMode(z => !z);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [zenMode]);
+  }, [editorPreviewMode, zenMode]);
 
   if (zenMode) {
     return (
       <div className="fixed inset-0 flex overflow-hidden bg-[var(--bg-color)]">
-        <Editor zenMode onToggleZen={toggleZen} modeRequest={editorModeRequest} />
+        <Editor
+          zenMode
+          onToggleZen={toggleZen}
+          previewMode={editorPreviewMode}
+          onPreviewModeChange={setEditorPreviewMode}
+        />
       </div>
     );
   }
@@ -71,7 +87,11 @@ export default function Dashboard() {
           </div>
         </div>
         
-        <Editor onToggleZen={toggleZen} modeRequest={editorModeRequest} />
+        <Editor
+          onToggleZen={toggleZen}
+          previewMode={editorPreviewMode}
+          onPreviewModeChange={setEditorPreviewMode}
+        />
       </div>
     </div>
   );

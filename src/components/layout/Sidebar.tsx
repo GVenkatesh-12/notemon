@@ -24,7 +24,7 @@ function SidebarSkeleton() {
 interface SidebarProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-  onRequestEditorMode?: (noteId: string, mode: 'edit' | 'preview') => void;
+  onRequestEditorMode?: (mode: 'edit' | 'preview') => void;
 }
 
 export function Sidebar({ isOpen, setIsOpen, onRequestEditorMode }: SidebarProps) {
@@ -77,7 +77,7 @@ export function Sidebar({ isOpen, setIsOpen, onRequestEditorMode }: SidebarProps
 
   const openNote = (note: (typeof notes)[number], mode: 'edit' | 'preview') => {
     openTab(note);
-    onRequestEditorMode?.(note._id, mode);
+    onRequestEditorMode?.(mode);
     if (window.innerWidth < 768) setIsOpen(false);
   };
 

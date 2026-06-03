@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, type ComponentPropsWithoutRef, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { useNotesStore } from '../../store/notesStore';
 import {
@@ -29,7 +29,31 @@ import {
   type OpenRouterConfig,
 } from '../../api/openRouter';
 
-const InlineCode = ({ children, ...props }: any) => {
+type InlineCodeProps = ComponentPropsWithoutRef<'code'> & {
+  children?: ReactNode;
+};
+
+type CodeBlockProps = InlineCodeProps & {
+  inline?: boolean;
+  node?: unknown;
+};
+
+interface ApiError {
+  name?: string;
+  message?: string;
+  response?: {
+    status?: string | number;
+    data?: {
+      error?: string;
+    };
+  };
+}
+
+function toApiError(error: unknown): ApiError {
+  return error && typeof error === 'object' ? error as ApiError : {};
+}
+
+const InlineCode = ({ children, ...props }: InlineCodeProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -55,7 +79,8 @@ const InlineCode = ({ children, ...props }: any) => {
   );
 };
 
-const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
+const CodeBlock = ({ node, inline, className, children, ...props }: CodeBlockProps) => {
+  void node;
   const match = /language-(\w+)/.exec(className || '');
   const [copied, setCopied] = useState(false);
 
@@ -85,7 +110,6 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
             style={vs2015}
             customStyle={{ background: 'transparent', padding: 0, margin: 0 }}
             PreTag="div"
-            {...props}
           >
             {String(children).replace(/\n$/, '')}
           </SyntaxHighlighter>
@@ -100,11 +124,8 @@ const CodeBlock = ({ node, inline, className, children, ...props }: any) => {
 interface EditorProps {
   zenMode?: boolean;
   onToggleZen?: () => void;
-  modeRequest?: {
-    noteId: string;
-    mode: 'edit' | 'preview';
-    requestId: number;
-  } | null;
+  previewMode?: boolean;
+  onPreviewModeChange?: (isPreview: boolean) => void;
 }
 
 interface AiTarget {
@@ -128,7 +149,12 @@ function formatEstimatedCost(cost?: number) {
   return `$${cost.toFixed(2)} max`;
 }
 
-export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProps) {
+export function Editor({
+  zenMode = false,
+  onToggleZen,
+  previewMode = false,
+  onPreviewModeChange,
+}: EditorProps) {
   const { 
     openTabs, 
     activeTabId, 
@@ -139,7 +165,7 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
   } = useNotesStore();
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
-  const [isPreview, setIsPreview] = useState(false);
+  const [isPreview, setIsPreview] = useState(previewMode);
   const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
   const [isAiRunning, setIsAiRunning] = useState(false);
   const [aiTargetPreview, setAiTargetPreview] = useState<AiTarget | null>(null);
@@ -154,6 +180,7 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
   const aiAbortControllerRef = useRef<AbortController | null>(null);
   const activeContentRef = useRef('');
   const activeTabIdRef = useRef<string | null>(null);
+  const initializedHistoryTabRef = useRef<string | null>(null);
   const history = useUndoRedo();
 
   const adjustFontSize = useCallback((delta: number) => {
@@ -171,8 +198,10 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
   }, [activeTab?.content, activeTabId]);
 
   useEffect(() => {
-    if (activeTab) history.init(activeTab._id, activeTab.content || '');
-  }, [activeTab?._id]);
+    if (!activeTab || initializedHistoryTabRef.current === activeTab._id) return;
+    initializedHistoryTabRef.current = activeTab._id;
+    history.init(activeTab._id, activeTab.content || '');
+  }, [activeTab, history]);
 
   useEffect(() => {
     const handleConfigChanged = () => setOpenRouterConfig(getOpenRouterConfig());
@@ -191,9 +220,13 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
   }, [isAiMenuOpen]);
 
   useEffect(() => {
-    if (!modeRequest || modeRequest.noteId !== activeTabId) return;
-    setIsPreview(modeRequest.mode === 'preview');
-  }, [activeTabId, modeRequest]);
+    setIsPreview(previewMode);
+  }, [previewMode]);
+
+  const setPreviewMode = useCallback((nextPreviewMode: boolean) => {
+    setIsPreview(nextPreviewMode);
+    onPreviewModeChange?.(nextPreviewMode);
+  }, [onPreviewModeChange]);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpdatesRef = useRef<PendingNoteUpdate | null>(null);
@@ -220,9 +253,10 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
       });
       setSaveStatus('saved');
       retryCountRef.current = 0;
-    } catch (err: any) {
-      const status = err?.response?.status || 'network';
-      const msg = err?.response?.data?.error || err?.message || 'Unknown error';
+    } catch (err: unknown) {
+      const error = toApiError(err);
+      const status = error.response?.status || 'network';
+      const msg = error.response?.data?.error || error.message || 'Unknown error';
       console.error('[Save failed]', status, msg, { pending: pendingUpdate, err });
       toast.error(`Save failed (${status}): ${msg}`, { id: 'save-error', duration: 6000 });
       setSaveStatus('unsaved');
@@ -499,11 +533,12 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
       toast.success(totalTokens ? `AI updated note (${totalTokens} tokens used).` : 'AI updated note.', {
         id: loadingToast,
       });
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
+    } catch (err: unknown) {
+      const error = toApiError(err);
+      if (error.name === 'AbortError') {
         toast.error('AI request stopped.', { id: loadingToast });
       } else {
-        toast.error(err?.message || 'AI request failed.', { id: loadingToast, duration: 6000 });
+        toast.error(error.message || 'AI request failed.', { id: loadingToast, duration: 6000 });
       }
     } finally {
       if (aiAbortControllerRef.current === abortController) {
@@ -649,7 +684,7 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
             </div>
 
             <button
-              onClick={() => setIsPreview(p => !p)}
+              onClick={() => setPreviewMode(!isPreview)}
               className="p-1.5 sm:p-2 rounded-lg skeuo-btn opacity-70 hover:opacity-100 transition-opacity"
               title={isPreview ? 'Switch to Edit' : 'Switch to Preview'}
             >
@@ -766,7 +801,7 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
                 rehypePlugins={[rehypeRaw, rehypeKatex]}
                 components={{
                   pre: ({ children }) => <>{children}</>,
-                  code: CodeBlock as any,
+                  code: CodeBlock,
                   mark: ({ children }) => (
                     <mark className="bg-yellow-200 dark:bg-yellow-500/30 text-[var(--text-color)] px-1 rounded-sm">{children}</mark>
                   ),
