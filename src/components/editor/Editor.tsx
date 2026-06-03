@@ -11,9 +11,12 @@ import {
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import 'katex/dist/katex.min.css';
 import { SkeuoButton } from '../ui/SkeuoButton';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
 import {
@@ -759,8 +762,8 @@ export function Editor({ zenMode = false, onToggleZen, modeRequest }: EditorProp
           {isPreview ? (
             <div className="max-w-none w-full h-full p-4 md:p-8 overflow-y-auto text-[var(--text-color)]">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeRaw, rehypeKatex]}
                 components={{
                   pre: ({ children }) => <>{children}</>,
                   code: CodeBlock as any,
